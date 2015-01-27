@@ -1,0 +1,28 @@
+{
+  "name": "hls-chromecast-demo",
+  "version": "0.0.0",
+  "description": "transcode video and stream it to chromecast on the fly",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xat/hls-chromecast-demo"
+  },
+  "author": "Simon Kusterer",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/xat/hls-chromecast-demo/issues"
+  },
+  "homepage": "https://github.com/xat/hls-chromecast-demo",
+  "dependencies": {
+    "chromecast-can-play": "git://github.com/xat/chromecast-can-play",
+    "chromecast-player": "^0.1.7",
+    "express": "^4.11.1",
+    "fluent-ffmpeg": "^2.0.0-rc3",
+    "internal-ip": "^1.0.0",
+    "keypress": "^0.2.1",
+    "mkdirp": "^0.5.0"
+  }
+}
