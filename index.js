@@ -24,41 +24,36 @@ var getRandomInt = function(min, max) {
 };
 
 app.use(function(req, res, next) {
+  // Chromecast requires this for HLS to work.
   res.setHeader('Access-Control-Allow-Origin', '*');
   next();
 });
 
 ccPlayer.use(function(ctx, next) {
   if (ctx.mode !== 'launch') return next();
-
   var path = ctx.options.path;
 
   canPlay(path, function(err, meta) {
+
     if (meta.canPlay) {
-
+      // The File can be sent to chromecast without
+      // the need of transcoding.
       console.log('input can be played without transcoding');
-
       ctx.options.path = buildUrl('/video');
-
       app.get('/video', function(req, res) {
-        console.log('incoming request');
         fs.createReadStream(path).pipe(res);
       });
-
       ctx.options.type = 'video/mp4';
-
       return next();
     }
 
-    ctx.options.type = 'application/x-mpegurl';
-
+    // We will store the .ts and .m3u8 files in
+    // the temp dir.
     var tempP = pathJoin(tempDir, getRandomInt(100, 1000) + '');
 
     mkdirp(tempP, function() {
       var done = false;
-
       var ff = ffmpeg(path);
-
       var out = pathJoin(tempP, 'test.m3u8');
 
       if (!meta.audioSupported && !meta.videoSupported) {
@@ -78,7 +73,7 @@ ccPlayer.use(function(ctx, next) {
       ff.outputOptions([
         '-hls_time 20', // each .ts file has a length of 20 seconds
         '-hls_list_size 0', // store all pieces in the .m3u8 file
-        '-bsf:v h264_mp4toannexb'
+        '-bsf:v h264_mp4toannexb' // ffmpeg aborts trasncoding in some cases without this
       ])
       .on('progress', function(prog) {
         if (done) return;
@@ -97,13 +92,12 @@ ccPlayer.use(function(ctx, next) {
       .output(out)
       .run();
 
-      console.log('use left/right arrows to seek and p/r to pause and resume');
-
       app.use(express.static(tempP));
 
       ctx.options.path = buildUrl('/test.m3u8');
       ctx.options.streamType = 'LIVE';
       ctx.options.supportControls = true;
+      ctx.options.type = 'application/x-mpegurl';
     });
 
   });
@@ -113,7 +107,7 @@ if (!input) {
   return console.log('missing file');
 }
 
-console.log('launching:', input);
+console.log('launching player with input file:', input);
 
 ccPlayer.launch(input, function(err, p, ctx) {
   if (err) return console.log(err);
@@ -149,10 +143,12 @@ ccPlayer.launch(input, function(err, p, ctx) {
       });
     }
 
+    // pause with the p-key
     if (key.name === 'p') {
       p.pause();
     }
 
+    // resume with the r-key
     if (key.name === 'r') {
       p.play();
     }
