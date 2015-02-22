@@ -1,4 +1,4 @@
-# hls-chromecast-demo
+# hlscast
 
 This is a small proof of concept demo to show how videos can be transcoded and
 sent to Chromecast using HLS. SEEK, PLAY and PAUSE are possible while
@@ -8,9 +8,13 @@ The demo also tries to detect if only audio needs to be transcoded
 
 ### Installation
 
-* clone repo
-* run `npm install`
-* run `./index.js <localpath to video>`
+* run `npm install hlscast -g`
+
+### Usage
+
+```
+hlscast ./myvideo.mkv
+```
 
 ## License
 MIT

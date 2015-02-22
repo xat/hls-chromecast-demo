@@ -3,12 +3,14 @@
 var ccPlayer = require('chromecast-player')();
 var ffmpeg = require('fluent-ffmpeg');
 var tempDir = require('os').tmpdir();
-var keypress = require('keypress');
 var fs = require('fs');
 var canPlay = require('chromecast-can-play');
 var express = require('express');
 var mkdirp = require('mkdirp');
 var ip = require('internal-ip')();
+var mime = require('mime');
+var util = require('util');
+var rangeParser = require('range-parser');
 var pathJoin = require('path').join;
 var app = express();
 var input = process.argv[2];
@@ -38,7 +40,7 @@ ccPlayer.use(function(ctx, next) {
     if (meta.canPlay) {
       // The File can be sent to chromecast without
       // the need of transcoding.
-      console.log('input can be played without transcoding');
+      console.log('input can be played without transcoding\n');
       ctx.options.path = buildUrl('/video');
       app.get('/video', function(req, res) {
         fs.createReadStream(path).pipe(res);
@@ -49,7 +51,7 @@ ccPlayer.use(function(ctx, next) {
 
     // We will store the .ts and .m3u8 files in
     // the temp dir.
-    var tempP = pathJoin(tempDir, getRandomInt(100, 1000) + '');
+    var tempP = pathJoin(tempDir, 'castnow_' + getRandomInt(100, 1000) + '');
 
     mkdirp(tempP, function() {
       var done = false;
@@ -63,7 +65,7 @@ ccPlayer.use(function(ctx, next) {
       } else if (meta.audioSupported === false) {
         // transcode only audio
         console.log('transcoding audio only');
-        ff = ff.videoCodec('copy').audioCodec('libfaac');
+        ff = ff.videoCodec('copy').audioCodec('aac').audioBitrate('193k').audioFrequency(48000).audioChannels(2);
       } else if (meta.videoSupported === false) {
         // transcode only video
         console.log('transcoding video only');
@@ -71,7 +73,7 @@ ccPlayer.use(function(ctx, next) {
       }
 
       ff.outputOptions([
-        '-hls_time 20', // each .ts file has a length of 20 seconds
+        '-hls_time 3', // each .ts file has a length of 3 seconds
         '-hls_list_size 0', // store all pieces in the .m3u8 file
         '-bsf:v h264_mp4toannexb' // ffmpeg aborts trasncoding in some cases without this
       ])
@@ -92,7 +94,37 @@ ccPlayer.use(function(ctx, next) {
       .output(out)
       .run();
 
-      app.use(express.static(tempP));
+      console.log('tempdir', tempP);
+
+      app.use(function(req, res, next) {
+        var filePath = pathJoin(tempP,req.path);
+
+        var stat = fs.statSync(filePath);
+        var total = stat.size;
+        var range = req.headers.range;
+        var type = mime.lookup(filePath);
+
+        res.setHeader('Content-Type', type);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+
+        if (!range) {
+          res.setHeader('Content-Length', total);
+          res.statusCode = 200;
+          return fs.createReadStream(filePath).pipe(res);
+        }
+
+        var part = rangeParser(total, range)[0];
+        var chunksize = (part.end - part.start) + 1;
+        var file = fs.createReadStream(filePath, {start: part.start, end: part.end});
+
+        res.setHeader('Content-Range', 'bytes ' + part.start + '-' + part.end + '/' + total);
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Content-Length', chunksize);
+        res.statusCode = 206;
+
+        return file.pipe(res);
+        //next();
+      });
 
       ctx.options.path = buildUrl('/test.m3u8');
       ctx.options.streamType = 'LIVE';
@@ -115,18 +147,37 @@ ccPlayer.launch(input, function(err, p, ctx) {
   console.log('player launched.');
 
   if (ctx.options.supportControls) {
-    console.log('use left/right arrows to seek and p/r to pause and resume');
+    console.log('use left/right arrows to seek and the space-key to toggle between pause and play');
   }
 
-  keypress(process.stdin);
-  process.stdin.setRawMode(true);
-  process.stdin.resume();
+  var stdin = process.stdin;
+  stdin.setRawMode( true );
+  stdin.resume();
+  stdin.setEncoding('utf8');
 
-  process.stdin.on('keypress', function(ch, key) {
-    if (!key || !key.name) return;
+  stdin.on('data', function(key){
+    var functionKeyCodeRe = /^(?:\x1b+)(O|N|\[|\[\[)(?:(\d+)(?:;(\d+))?([~^$])|(?:1;)?(\d+)?([a-zA-Z]))/;
+    var parts = functionKeyCodeRe.exec(key);
 
-    // seek 30 seconds forward
-    if (key.name === 'right') {
+    if (key === '\u0003') {
+      return process.exit();
+    }
+
+    // space-key (toggle play/pause)
+    if (key === '\x1b ' || key === ' ') {
+      if (p.currentSession.playerState === 'PLAYING') {
+        p.pause();
+      } else if (p.currentSession.playerState === 'PAUSED') {
+        p.play();
+      }
+      return;
+    }
+
+    var code = (parts[1] || '') + (parts[2] || '') +
+               (parts[4] || '') + (parts[6] || '');
+
+    // right-key
+    if (code === '[C' || code === 'OC') {
       p.getStatus(function(err, status) {
         var target = status.currentTime + seekOffset;
         console.log('seeking forward', target);
@@ -134,8 +185,8 @@ ccPlayer.launch(input, function(err, p, ctx) {
       });
     }
 
-    // seek 30 seconds backwards
-    if (key.name === 'left') {
+    // left-key
+    if (code === 'OD' || code === '[D') {
       p.getStatus(function(err, status) {
         var target = Math.max(0, status.currentTime - 30);
         console.log('seeking backward', target);
@@ -143,20 +194,8 @@ ccPlayer.launch(input, function(err, p, ctx) {
       });
     }
 
-    // pause with the p-key
-    if (key.name === 'p') {
-      p.pause();
-    }
-
-    // resume with the r-key
-    if (key.name === 'r') {
-      p.play();
-    }
-
-    if (key && key.ctrl && key.name == 'c') {
-      process.exit();
-    }
   });
+
 });
 
 app.listen(port);
