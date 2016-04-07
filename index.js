@@ -61,7 +61,7 @@ ccPlayer.use(function(ctx, next) {
       if (!meta.audioSupported && !meta.videoSupported) {
         // transcode video and audio
         console.log('transcoding video and audio');
-        ff = ff.videoCodec('libx264').audioCodec('libfaac');
+        ff = ff.videoCodec('libx264').audioCodec('aac');
       } else if (meta.audioSupported === false) {
         // transcode only audio
         console.log('transcoding audio only');
