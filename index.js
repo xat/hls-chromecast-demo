@@ -65,7 +65,7 @@ ccPlayer.use(function(ctx, next) {
       } else if (meta.audioSupported === false) {
         // transcode only audio
         console.log('transcoding audio only');
-        ff = ff.videoCodec('copy').audioCodec('aac').audioBitrate('193k').audioFrequency(48000).audioChannels(2);
+        ff = ff.videoCodec('copy').audioCodec('aac');
       } else if (meta.videoSupported === false) {
         // transcode only video
         console.log('transcoding video only');
